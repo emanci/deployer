@@ -1,1 +1,1 @@
-# slim-deployer
+## Another simple deployment tool
