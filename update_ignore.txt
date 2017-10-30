@@ -1,1 +1,1 @@
-/public_html\/Qxiaofei2.0\/dist\/index\.html/
+/public_html\/foo\/dist\/index\.html/

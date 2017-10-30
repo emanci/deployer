@@ -2,6 +2,8 @@
 
 namespace Emanci\Deployer;
 
+use Emanci\Deployer\Agents\SvnAgent;
+use InvalidArgumentException;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\ProgressBar;
 use Symfony\Component\Console\Input\InputArgument;
@@ -11,9 +13,17 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 define('SVN_BASEPATH', '/codes/foobar/project_name');
 define('IGNORE_FILE', 'update_ignore.txt');
+define('SCM_AGENT', 'svn');
 
 class Deployer extends Command
 {
+    /**
+     * @var array
+     */
+    protected $agents = [
+        'svn' => SvnAgent::class,
+    ];
+
     protected function configure()
     {
         $this
@@ -44,15 +54,16 @@ class Deployer extends Command
         $limit = intval($input->getOption('limit'));
         $days = intval($input->getOption('days'));
 
-        $hasMore = $this->checkMoreLogs($limit, $days);
+        $agent = $this->getAgent();
+        $hasMore = $agent->moreLogs($limit, $days);
 
         if ($hasMore) {
-            $output->writeln('May be more limit');
+            $output->writeln('May be more limit.');
 
             return;
         }
 
-        $files = $changing ? $this->getChangingFiles() : $this->getChangedFiles($limit);
+        $files = $changing ? $agent->onChangingFiles() : $agent->onChangedFiles($limit);
         $fileCount = count($files);
 
         if (empty($files)) {
@@ -78,7 +89,7 @@ class Deployer extends Command
             }
 
             if (!$test) {
-                // upload
+                // upload the logic
             }
             $progress->setMessage('*** upload file *** '.$filename."\n");
             $progress->advance();
@@ -86,6 +97,24 @@ class Deployer extends Command
 
         $progress->setFormat('Upload completed.');
         $progress->finish();
+    }
+
+    /**
+     * @param string $agent
+     *
+     * @throws InvalidArgumentException
+     *
+     * @return mixed
+     */
+    protected function getAgent($agent = SCM_AGENT)
+    {
+        if (isset($this->agents[$agent])) {
+            $agentClass = $this->agents[$agent];
+
+            return new $agentClass();
+        }
+
+        throw new InvalidArgumentException("$agent not supported.");
     }
 
     /**
@@ -119,87 +148,5 @@ class Deployer extends Command
         }
 
         return false;
-    }
-
-    /**
-     * @return array
-     */
-    protected function getChangingFiles()
-    {
-        exec('svn status -q', $output);
-
-        return array_filter($output, function ($line) {
-            if (preg_match('/([MA])[\s\t]+(\S+)/', $line, $match)) {
-                return str_replace('\\', '/', '/'.$match[2]);
-            }
-        });
-    }
-
-    /**
-     * @param int $limit
-     * @param int $days
-     *
-     * @return bool
-     */
-    protected function checkMoreLogs($limit, $days)
-    {
-        exec('svn log --limit '.$limit.' -v', $logs);
-        $hasMore = false;
-
-        if ($days > 0) {
-            $limitTimestamp = $this->getTodayTimestamp() - ($days - 1) * 3600 * 24;
-            foreach ($logs as $line) {
-                if (preg_match('/\d{4}\-\d{2}\-\d{2}\s\d{2}\:\d{2}\:\d{2}/i', $line, $match)) {
-                    $lineTimestamp = strtotime($match[0]);
-                    if ($lineTimestamp <= $limitTimestamp) {
-                        $hasMore = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        return $hasMore;
-    }
-
-    /**
-     * @param int $limit
-     *
-     * @return array
-     */
-    protected function getChangedFiles($limit)
-    {
-        exec('svn log --limit '.$limit.' -v', $logs);
-
-        return array_filter($logs, function ($line) {
-            if (preg_match('/([MA])\s(\S+)/', $line, $match)) {
-                $filename = $match[2];
-                if ($this->startsWith($filename, SVN_BASEPATH)) {
-                    return substr($filename, strlen(SVN_BASEPATH));
-                }
-            }
-        });
-    }
-
-    /**
-     * @return int
-     */
-    protected function getTodayTimestamp()
-    {
-        $date = date('Y-m-d', time());
-        list($year, $month, $day) = explode('-', $date);
-
-        return mktime(0, 0, 0, $month, $day, $year);
-    }
-
-    /**
-     * @param string $str
-     * @param string $start
-     *
-     * @return bool
-     */
-    protected function startsWith($str, $start)
-    {
-        return strpos($str, $start) === 0;
     }
 }
