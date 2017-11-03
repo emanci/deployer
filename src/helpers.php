@@ -19,9 +19,9 @@ if (!function_exists('get_date')) {
 if (!function_exists('get_timestamp')) {
     function get_timestamp($date)
     {
-        list($year, $month, $day) = explode('-', $date);
+        $dates = explode('-', $date);
 
-        return mktime(0, 0, 0, $month, $day, $year);
+        return mktime(0, 0, 0, $dates[1], $dates[2], $dates[0]);
     }
 }
 
